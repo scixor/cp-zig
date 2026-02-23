@@ -1,0 +1,40 @@
+# cp-zig
+
+A minimal reimplementation of Unix `cp` in Zig.
+
+## Usage
+
+```
+cp-zig [-r] [-f] [-v] <source> <dest>
+```
+
+| Flag | Description |
+|------|-------------|
+| `-r` | Copy directories recursively |
+| `-f` | Force overwrite existing files |
+| `-v` | Verbose output |
+
+## Build
+
+```sh
+zig build
+```
+
+The binary is output to `zig-out/bin/cp-zig`.
+
+## Examples
+
+```sh
+# Copy a file
+./zig-out/bin/cp-zig file.txt copy.txt
+
+# Recursive directory copy
+./zig-out/bin/cp-zig -r -v src/ backup/
+
+# Force overwrite
+./zig-out/bin/cp-zig -f config.json /tmp/config.json
+```
+
+## License
+
+MIT
