@@ -11,7 +11,7 @@ cp-zig [-r] [-f] [-v] <source> <dest>
 | Flag | Description |
 |------|-------------|
 | `-r` | Copy directories recursively |
-| `-f` | Force overwrite existing files |
+| `-f` | Force overwrite existing files (unlike cp this checks) |
 | `-v` | Verbose output |
 
 ## Build

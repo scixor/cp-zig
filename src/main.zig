@@ -1,35 +1,33 @@
 const std = @import("std");
 const Io = std.Io;
 
-const cp_zig = @import("cp-zig");
+const cp = @import("root.zig");
 
 pub fn main(init: std.process.Init) !void {
     const arena: std.mem.Allocator = init.arena.allocator();
-    // const io = init.io;
+    const io = init.io;
 
     // Accessing command line arguments:
     const args = try init.minimal.args.toSlice(arena);
 
-    const options = cp_zig.parseProgramOptions(&args) catch |err| {
+    const options = cp.args.parseProgramOptions(&args) catch |err| {
         switch (err) {
             error.SourceNotFound => std.log.err("No source was given", .{}),
             error.DestNotFound => std.log.err("No destination was given", .{}),
         }
         return;
     };
-    _ = options;
+
+    // std.debug.print("{s}, {s}", .{ options.source, options.dest });
+
+    try cp.copy.copySerially(io, arena, &options);
+    // catch {
+    // for now just exit
+    // std.process.exit(1);
+    // };
 
     // outer: for (args) |arg| {
     //     const arg_path = Io.Dir.path.parsePathPosix(arg);
-
-    // see if exists
-    // _ = cwd_dir.statFile(io, arg_path.root, .{}) catch |err| switch (err) {
-    //     error.FileNotFound => {
-    //         std.log.err("File not found {s}", .{arg_path.root});
-    //         continue :outer;
-    //     },
-    //     else => return err,
-    // };
 
     // switch (stat.kind) {
     //     .file => handleFile(arg_path),
