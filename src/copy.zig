@@ -2,8 +2,8 @@ const std = @import("std");
 const Io = std.Io;
 const Dir = Io.Dir;
 
-const cp_file = @import("file.zig");
-const util = @import("util.zig");
+const cfile = @import("file.zig");
+const cutil = @import("util.zig");
 const ProgramOptions = @import("args.zig").ProgramOptions;
 
 const CopyInvalidError = error{
@@ -13,7 +13,7 @@ const CopyInvalidError = error{
     DirSameLocation,
 };
 
-const CopyFileError = CopyInvalidError || Dir.CopyFileError || cp_file.PathStatError || std.mem.Allocator.Error;
+const CopyFileError = CopyInvalidError || Dir.CopyFileError || cfile.PathStatError || std.mem.Allocator.Error;
 
 const CopyInternalError = error{
     SourceLocationInvalid,
@@ -21,7 +21,7 @@ const CopyInternalError = error{
     SameLocation,
 };
 
-pub const CopyError = CopyInternalError || CopyFileError || cp_file.ParsedPathError || cp_file.PathStatError || Dir.CopyFileError;
+pub const CopyError = CopyInternalError || CopyFileError || cfile.ParsedPathError || cfile.PathStatError || Dir.CopyFileError;
 
 fn copyFileToFile(io: Io, source: []const u8, dest: []const u8, force: bool) Dir.CopyFileError!void {
     // std.debug.print("Source path: {s}\n{s}\n", .{ source, dest });
@@ -31,14 +31,14 @@ fn copyFileToFile(io: Io, source: []const u8, dest: []const u8, force: bool) Dir
 fn copyFile(
     io: Io,
     alloc: std.mem.Allocator,
-    source_path: *const cp_file.ParsedPath,
-    source_stat: *const cp_file.PathStat,
-    dest_path: *const cp_file.ParsedPath,
-    dest_stat: *const cp_file.PathStat,
+    source_path: *const cfile.ParsedPath,
+    source_stat: *const cfile.PathStat,
+    dest_path: *const cfile.ParsedPath,
+    dest_stat: *const cfile.PathStat,
     force: bool,
 ) CopyFileError!void {
-    util.assertS(source_stat.path_type == .file, "Source should be a file", .{});
-    util.assertS(source_stat.stat != null, "Source file should exist", .{});
+    cutil.assertS(source_stat.path_type == .file, "Source should be a file", .{});
+    cutil.assertS(source_stat.stat != null, "Source file should exist", .{});
 
     if (source_path.abs_path.len == 0) return;
 
@@ -82,8 +82,8 @@ fn copyFile(
         // NOTE: this does mean more syscalls
         // but I have been bitten by this a lot trying to copy and forgetting that
         // there is a same name file there
-        const parsed_path = cp_file.ParsedPath{ .abs_path = final_dest };
-        const dir_file_dest_stat = try cp_file.pathStat(io, &parsed_path);
+        const parsed_path = cfile.ParsedPath{ .abs_path = final_dest };
+        const dir_file_dest_stat = try cfile.pathStat(io, &parsed_path);
         const dest_exists_file = dir_file_dest_stat.stat != null and dir_file_dest_stat.path_type == .file;
 
         if (dir_file_dest_stat.stat == null or (dest_exists_file and force)) {
@@ -102,10 +102,10 @@ fn copyFile(
 pub fn copySerially(io: Io, alloc: std.mem.Allocator, options: *const ProgramOptions) CopyError!void {
     const cwd = Dir.cwd();
 
-    const source_path = try cp_file.parsePathAbsolute(io, alloc, cwd, options.source);
+    const source_path = try cfile.parsePathAbsolute(io, alloc, cwd, options.source);
     defer source_path.deinit(alloc);
 
-    const source_stat = cp_file.pathStat(io, &source_path) catch |err| switch (err) {
+    const source_stat = cfile.pathStat(io, &source_path) catch |err| switch (err) {
         error.StatKindNotSupported => {
             std.log.err("Source file kind not supported: '{s}'", .{options.source});
             return error.SourceLocationInvalid;
@@ -118,10 +118,10 @@ pub fn copySerially(io: Io, alloc: std.mem.Allocator, options: *const ProgramOpt
         return error.SourceLocationInvalid;
     }
 
-    const dest_path: cp_file.ParsedPath = try cp_file.parsePathAbsolute(io, alloc, cwd, options.dest);
+    const dest_path: cfile.ParsedPath = try cfile.parsePathAbsolute(io, alloc, cwd, options.dest);
     defer dest_path.deinit(alloc);
 
-    const dest_stat = cp_file.pathStat(io, &dest_path) catch |err| switch (err) {
+    const dest_stat = cfile.pathStat(io, &dest_path) catch |err| switch (err) {
         error.StatKindNotSupported => {
             std.log.err("Dest file kind not supported: '{s}'", .{options.dest});
             return error.SourceLocationInvalid;
@@ -129,6 +129,7 @@ pub fn copySerially(io: Io, alloc: std.mem.Allocator, options: *const ProgramOpt
         else => return err,
     };
 
+    // TODO: Ideally we should resolve the path and type of copy this will be here
     if (std.mem.eql(u8, source_path.abs_path, dest_path.abs_path)) {
         return CopyInternalError.SameLocation;
     }

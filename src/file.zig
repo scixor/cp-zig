@@ -57,7 +57,7 @@ pub fn pathStat(io: Io, path: *const ParsedPath) PathStatError!PathStat {
     std.debug.assert(Dir.path.isAbsolute(path.abs_path));
     // I am not sure why zig dones't have a full on absoulte version
     // but I gues this will work
-    const stat: ?Dir.Stat = Dir.statFile(.{ .handle = 0 }, io, path.abs_path, .{}) catch |err| blk: switch (err) {
+    const stat: ?Dir.Stat = Dir.statFile(undefined, io, path.abs_path, .{}) catch |err| blk: switch (err) {
         error.FileNotFound => break :blk null,
         else => return err,
     };
