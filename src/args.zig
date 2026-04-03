@@ -1,22 +1,34 @@
 const std = @import("std");
 const Io = std.Io;
 
+pub const Backend = enum {
+    single,
+    threaded,
+    evented,
+
+    pub fn str(self: Backend) []const u8 {
+        return @tagName(self);
+    }
+};
+
 pub const ProgramOptions = struct {
     recurse: bool,
     force: bool,
     verbose: bool,
+    backend: Backend,
     source: [:0]const u8,
     dest: [:0]const u8,
 
     pub fn init(
         source: [:0]const u8,
         dest: [:0]const u8,
-        opts: struct { recurse: bool = false, force: bool = false, verbose: bool = false },
+        opts: struct { recurse: bool = false, force: bool = false, verbose: bool = false, backend: Backend = .threaded },
     ) ProgramOptions {
         return .{
             .recurse = opts.recurse,
             .force = opts.force,
             .verbose = opts.verbose,
+            .backend = opts.backend,
             .source = source,
             .dest = dest,
         };
@@ -36,6 +48,7 @@ pub fn parseProgramOptions(args: *const []const [:0]const u8) ProgramParseError!
     var recurse = false;
     var force = false;
     var verbose = false;
+    var backend: Backend = .threaded;
     var source: [:0]const u8 = "";
     var dest: [:0]const u8 = "";
 
@@ -49,6 +62,15 @@ pub fn parseProgramOptions(args: *const []const [:0]const u8) ProgramParseError!
             continue;
         } else if (std.mem.eql(u8, arg, "-v")) {
             verbose = true;
+            continue;
+        } else if (std.mem.eql(u8, arg, "--single")) {
+            backend = .single;
+            continue;
+        } else if (std.mem.eql(u8, arg, "--threaded")) {
+            backend = .threaded;
+            continue;
+        } else if (std.mem.eql(u8, arg, "--evented")) {
+            backend = .evented;
             continue;
         }
 
@@ -79,5 +101,6 @@ pub fn parseProgramOptions(args: *const []const [:0]const u8) ProgramParseError!
         .recurse = recurse,
         .force = force,
         .verbose = verbose,
+        .backend = backend,
     });
 }

@@ -41,7 +41,7 @@ test "copy file to new file" {
     const dest = try pathInTmp(tmp.dir, io, alloc, "dest.txt");
     defer alloc.free(dest);
 
-    try copy.copySerially(io, alloc, &ProgramOptions.init(source, dest, .{}));
+    try copy.copy(io, alloc, &ProgramOptions.init(source, dest, .{}));
 
     const out = try tmp.dir.readFileAlloc(io, "dest.txt", alloc, .limited(1024));
     defer alloc.free(out);
@@ -63,7 +63,7 @@ test "copy file refuses overwrite without force" {
     const dest = try pathInTmp(tmp.dir, io, alloc, "dest.txt");
     defer alloc.free(dest);
 
-    try testing.expectError(error.FileNoForce, copy.copySerially(io, alloc, &ProgramOptions.init(source, dest, .{})));
+    try testing.expectError(error.FileNoForce, copy.copy(io, alloc, &ProgramOptions.init(source, dest, .{})));
 
     const out = try tmp.dir.readFileAlloc(io, "dest.txt", alloc, .limited(1024));
     defer alloc.free(out);
@@ -85,7 +85,7 @@ test "copy file overwrites with force" {
     const dest = try pathInTmp(tmp.dir, io, alloc, "dest.txt");
     defer alloc.free(dest);
 
-    try copy.copySerially(io, alloc, &ProgramOptions.init(source, dest, .{ .force = true }));
+    try copy.copy(io, alloc, &ProgramOptions.init(source, dest, .{ .force = true }));
 
     const out = try tmp.dir.readFileAlloc(io, "dest.txt", alloc, .limited(1024));
     defer alloc.free(out);
@@ -107,7 +107,7 @@ test "copy file into existing directory" {
     const dest_dir = try pathInTmp(tmp.dir, io, alloc, "out");
     defer alloc.free(dest_dir);
 
-    try copy.copySerially(io, alloc, &ProgramOptions.init(source, dest_dir, .{}));
+    try copy.copy(io, alloc, &ProgramOptions.init(source, dest_dir, .{}));
 
     const out = try tmp.dir.readFileAlloc(io, "out/source.txt", alloc, .limited(1024));
     defer alloc.free(out);
@@ -128,7 +128,7 @@ test "copy file to dot skips same location" {
     const dest_dot = try pathInTmp(tmp.dir, io, alloc, ".");
     defer alloc.free(dest_dot);
 
-    try copy.copySerially(io, alloc, &ProgramOptions.init(source, dest_dot, .{}));
+    try copy.copy(io, alloc, &ProgramOptions.init(source, dest_dot, .{}));
 
     const out = try tmp.dir.readFileAlloc(io, "source.txt", alloc, .limited(1024));
     defer alloc.free(out);
@@ -151,7 +151,7 @@ test "copy file to non-existing directory path errors" {
     const missing_dir = try std.mem.concatWithSentinel(alloc, u8, &.{ missing_base, "/" }, 0);
     defer alloc.free(missing_dir);
 
-    try testing.expectError(error.ResolveInvalidFileToDir, copy.copySerially(io, alloc, &ProgramOptions.init(source, missing_dir, .{})));
+    try testing.expectError(error.ResolveInvalidFileToDir, copy.copy(io, alloc, &ProgramOptions.init(source, missing_dir, .{})));
 }
 
 test "copy non-existing source errors" {
@@ -166,7 +166,7 @@ test "copy non-existing source errors" {
     const dest = try pathInTmp(tmp.dir, io, alloc, "dest.txt");
     defer alloc.free(dest);
 
-    try testing.expectError(error.SourceLocationInvalid, copy.copySerially(io, alloc, &ProgramOptions.init(missing_source, dest, .{})));
+    try testing.expectError(error.SourceLocationInvalid, copy.copy(io, alloc, &ProgramOptions.init(missing_source, dest, .{})));
 }
 
 // -- Directory copy tests --
@@ -191,7 +191,7 @@ test "copy dir to new dest" {
     const dest = try pathInTmp(tmp.dir, io, alloc, "dst");
     defer alloc.free(dest);
 
-    try copy.copySerially(io, alloc, &ProgramOptions.init(source, dest, .{ .recurse = true }));
+    try copy.copy(io, alloc, &ProgramOptions.init(source, dest, .{ .recurse = true }));
 
     const a = try readFile(tmp.dir, io, alloc, "dst/a.txt");
     defer alloc.free(a);
@@ -221,7 +221,7 @@ test "copy dir with nested subdirs" {
     const dest = try pathInTmp(tmp.dir, io, alloc, "dst");
     defer alloc.free(dest);
 
-    try copy.copySerially(io, alloc, &ProgramOptions.init(source, dest, .{ .recurse = true }));
+    try copy.copy(io, alloc, &ProgramOptions.init(source, dest, .{ .recurse = true }));
 
     const top = try readFile(tmp.dir, io, alloc, "dst/top.txt");
     defer alloc.free(top);
@@ -254,7 +254,7 @@ test "copy dir into existing dest merges" {
     const dest = try pathInTmp(tmp.dir, io, alloc, "dst");
     defer alloc.free(dest);
 
-    try copy.copySerially(io, alloc, &ProgramOptions.init(source, dest, .{ .recurse = true }));
+    try copy.copy(io, alloc, &ProgramOptions.init(source, dest, .{ .recurse = true }));
 
     // new file was copied in
     const new = try readFile(tmp.dir, io, alloc, "dst/new.txt");
@@ -285,7 +285,7 @@ test "copy dir skips existing files without force" {
     const dest = try pathInTmp(tmp.dir, io, alloc, "dst");
     defer alloc.free(dest);
 
-    try copy.copySerially(io, alloc, &ProgramOptions.init(source, dest, .{ .recurse = true }));
+    try copy.copy(io, alloc, &ProgramOptions.init(source, dest, .{ .recurse = true }));
 
     // old content preserved -- skipped without -f
     const out = try readFile(tmp.dir, io, alloc, "dst/conflict.txt");
@@ -311,7 +311,7 @@ test "copy dir overwrites existing files with force" {
     const dest = try pathInTmp(tmp.dir, io, alloc, "dst");
     defer alloc.free(dest);
 
-    try copy.copySerially(io, alloc, &ProgramOptions.init(source, dest, .{ .recurse = true, .force = true }));
+    try copy.copy(io, alloc, &ProgramOptions.init(source, dest, .{ .recurse = true, .force = true }));
 
     const out = try readFile(tmp.dir, io, alloc, "dst/conflict.txt");
     defer alloc.free(out);
@@ -333,7 +333,7 @@ test "copy dir to same location skips" {
     const dest = try pathInTmp(tmp.dir, io, alloc, "src");
     defer alloc.free(dest);
 
-    try copy.copySerially(io, alloc, &ProgramOptions.init(source, dest, .{ .recurse = true }));
+    try copy.copy(io, alloc, &ProgramOptions.init(source, dest, .{ .recurse = true }));
 
     // file should still be there, untouched
     const out = try readFile(tmp.dir, io, alloc, "src/a.txt");
@@ -355,7 +355,7 @@ test "copy empty dir" {
     const dest = try pathInTmp(tmp.dir, io, alloc, "dst");
     defer alloc.free(dest);
 
-    try copy.copySerially(io, alloc, &ProgramOptions.init(source, dest, .{ .recurse = true }));
+    try copy.copy(io, alloc, &ProgramOptions.init(source, dest, .{ .recurse = true }));
 
     // dest dir should exist and be empty
     const dst_dir = try tmp.dir.openDir(io, "dst", .{ .iterate = true });

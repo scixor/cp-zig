@@ -21,11 +21,6 @@ const CopyInternalError = error{
 
 pub const CopyError = CopyInternalError || CopyFileError || cfile.ParsedPathError || cfile.PathStatError || Dir.CopyFileError || cfile.ResolveTargetErrorType;
 
-fn copyFileToFile(io: Io, source: []const u8, dest: []const u8, force: bool) Dir.CopyFileError!void {
-    // std.debug.print("Source path: {s}\n{s}\n", .{ source, dest });
-    try Dir.copyFileAbsolute(source, dest, io, .{ .replace = force });
-}
-
 fn copyFile(
     io: Io,
     info: cfile.CopyTargetInfo,
@@ -59,31 +54,68 @@ fn copyFile(
     // case: ef -> nf : Y
     // case: ef -> ef : Y with -f
     if (info.dest_stat.path_type == .file) {
-        try copyFileToFile(io, info.source_path.abs_path, info.dest_path.abs_path, force);
+        // std.debug.print("Source path: {s}\n{s}\n", .{ source, dest });
+        // NOTE: Under `--evented` (std.Io.Uring) in current Zig dev, `replace = false`
+        // may panic inside stdlib (`Dir.copyFile` -> `File.Atomic.link` -> `linkat`).
+        try Dir.copyFileAbsolute(info.source_path.abs_path, info.dest_path.abs_path, io, .{ .replace = force });
         return;
     }
 }
 
+fn copyOneFile(
+    name_ptr: [*:0]const u8,
+    sdir: Dir,
+    ddir: Dir,
+    force: bool,
+    io: Io,
+) Io.Cancelable!void {
+    const name: [:0]const u8 = std.mem.span(name_ptr);
+    // NOTE: Under `--evented` (std.Io.Uring) in current Zig dev, `replace = false`
+    // may panic inside stdlib (`Dir.copyFile` -> `File.Atomic.link` -> `linkat`).
+    Dir.copyFile(sdir, name, ddir, name, io, .{ .replace = force }) catch |err| switch (err) {
+        error.PathAlreadyExists => {
+            std.log.info("cp: skipping existing file: {s}", .{name});
+            return;
+        },
+        else => {
+            std.log.err("cp: error copying {s}: {s}", .{ name, @errorName(err) });
+            return error.Canceled;
+        },
+    };
+}
+
 fn copyDirInner(
     io: Io,
+    alloc: std.mem.Allocator,
     sdir: Dir,
     ddir: Dir,
     force: bool,
 ) !void {
+    var group: Io.Group = .init;
     var it = sdir.iterate();
+
+    // track duped names so we can free them after group.await
+    var duped_names: std.ArrayListUnmanaged([*:0]u8) = .empty;
+    defer {
+        for (duped_names.items) |ptr| {
+            // recover the sentinel-terminated slice to free the full allocation
+            const name: [:0]u8 = std.mem.span(ptr);
+            alloc.free(name[0 .. name.len + 1]);
+        }
+        duped_names.deinit(alloc);
+    }
+
     while (try it.next(io)) |entry| {
         switch (entry.kind) {
             .file => {
-                Dir.copyFile(sdir, entry.name, ddir, entry.name, io, .{ .replace = force }) catch |err| switch (err) {
-                    error.PathAlreadyExists => {
-                        std.log.info("cp: skipping existing file: {s}", .{entry.name});
-                        continue;
-                    },
-                    else => return err,
-                };
+                // must dupe -- iterator reuses entry.name memory on next()
+                const name = try alloc.dupeZ(u8, entry.name);
+                try duped_names.append(alloc, name.ptr);
+                group.async(io, copyOneFile, .{ name.ptr, sdir, ddir, force, io });
             },
             .directory => {
                 // create dest subdir if needed, preserving source permissions
+                // dirs must be created inline before files can land in them
                 const src_sub = try sdir.openDir(io, entry.name, .{ .iterate = true });
                 defer src_sub.close(io);
 
@@ -98,15 +130,18 @@ fn copyDirInner(
                 };
                 defer dst_sub.close(io);
 
-                try copyDirInner(io, src_sub, dst_sub, force);
+                try copyDirInner(io, alloc, src_sub, dst_sub, force);
             },
             else => continue,
         }
     }
+
+    try group.await(io);
 }
 
 fn copyDir(
     io: Io,
+    alloc: std.mem.Allocator,
     info: cfile.CopyTargetInfo,
     force: bool,
 ) !void {
@@ -133,7 +168,7 @@ fn copyDir(
     const ddir = try Dir.openDirAbsolute(io, info.dest_path.abs_path, .{});
     defer ddir.close(io);
 
-    try copyDirInner(io, sdir, ddir, force);
+    try copyDirInner(io, alloc, sdir, ddir, force);
 }
 
 fn resolveCopyTarget(
@@ -178,7 +213,7 @@ fn resolveCopyTarget(
     return try cfile.resolveTargetPaths(io, alloc, &source_path, &source_stat, &dest_path, &dest_stat);
 }
 
-pub fn copySerially(io: Io, alloc: std.mem.Allocator, options: *const ProgramOptions) CopyError!void {
+pub fn copy(io: Io, alloc: std.mem.Allocator, options: *const ProgramOptions) CopyError!void {
     const cwd = Dir.cwd();
     const resolved = resolveCopyTarget(io, alloc, cwd, cwd, options.source, options.dest) catch |err| switch (err) {
         error.ResolveSameDir => {
@@ -199,6 +234,6 @@ pub fn copySerially(io: Io, alloc: std.mem.Allocator, options: *const ProgramOpt
     }
 
     if (resolved.source_stat.path_type == .dir) {
-        return try copyDir(io, resolved, options.force);
+        return try copyDir(io, alloc, resolved, options.force);
     }
 }

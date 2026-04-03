@@ -2,10 +2,10 @@ const std = @import("std");
 const Io = std.Io;
 
 const cp = @import("root.zig");
+const Backend = cp.args.Backend;
 
 pub fn main(init: std.process.Init) !void {
     const arena: std.mem.Allocator = init.arena.allocator();
-    const io = init.io;
 
     // Accessing command line arguments:
     const args = try init.minimal.args.toSlice(arena);
@@ -18,17 +18,30 @@ pub fn main(init: std.process.Init) !void {
         return;
     };
 
-    try cp.copy.copySerially(io, arena, &options);
-    // catch {
-    // for now just exit
-    // std.process.exit(1);
-    // };
+    if (options.backend == .evented) {
+        var evented: Io.Evented = undefined;
+        evented.init(init.gpa, .{}) catch |err| {
+            std.log.err("cp: failed to init evented backend: {s}", .{@errorName(err)});
+            return err;
+        };
+        defer evented.deinit();
 
-    // In order to do I/O operations need an `Io` instance.
+        if (options.verbose) {
+            std.log.info("cp: using {s} backend", .{options.backend.str()});
+        }
+        return cp.copy.copy(evented.io(), arena, &options);
+    }
 
-    // var stdout_buffer: [1024]u8 = undefined;
-    // var stdout_file_writer: Io.File.Writer = .init(.stdout(), io, &stdout_buffer);
-    // const stdout_writer = &stdout_file_writer.interface;
+    var single: Io.Threaded = .init_single_threaded;
+    const io: Io = switch (options.backend) {
+        .single => single.io(),
+        .threaded => init.io,
+        .evented => unreachable,
+    };
 
-    // try stdout_writer.flush(); // Don't forget to flush!
+    if (options.verbose) {
+        std.log.info("cp: using {s} backend", .{options.backend.str()});
+    }
+
+    try cp.copy.copy(io, arena, &options);
 }

@@ -1,6 +1,6 @@
 # cp-zig
 
-A minimal reimplementation of Unix `cp` in Zig.
+A minimal reimplementation of Unix `cp` in Zig for performence and testing out io.
 
 ## Usage
 
@@ -20,7 +20,7 @@ cp-zig [-r] [-f] [-v] <source> <dest>
 zig build
 ```
 
-The binary is output to `zig-out/bin/cp-zig`.
+The binary is output to `zig-out/bin/cp-zig` by default
 
 ## Examples
 
