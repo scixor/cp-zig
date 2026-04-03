@@ -17,11 +17,9 @@ const CopyFileError = CopyInvalidError || Dir.CopyFileError || cfile.PathStatErr
 
 const CopyInternalError = error{
     SourceLocationInvalid,
-    DestinationLocationInvalid,
-    SameLocation,
 };
 
-pub const CopyError = CopyInternalError || CopyFileError || cfile.ParsedPathError || cfile.PathStatError || Dir.CopyFileError;
+pub const CopyError = CopyInternalError || CopyFileError || cfile.ParsedPathError || cfile.PathStatError || Dir.CopyFileError || cfile.ResolveTargetErrorType;
 
 fn copyFileToFile(io: Io, source: []const u8, dest: []const u8, force: bool) Dir.CopyFileError!void {
     // std.debug.print("Source path: {s}\n{s}\n", .{ source, dest });
@@ -30,71 +28,32 @@ fn copyFileToFile(io: Io, source: []const u8, dest: []const u8, force: bool) Dir
 
 fn copyFile(
     io: Io,
-    alloc: std.mem.Allocator,
-    source_path: *const cfile.ParsedPath,
-    source_stat: *const cfile.PathStat,
-    dest_path: *const cfile.ParsedPath,
-    dest_stat: *const cfile.PathStat,
+    info: cfile.CopyTargetInfo,
     force: bool,
 ) CopyFileError!void {
-    cutil.assertS(source_stat.path_type == .file, "Source should be a file", .{});
-    cutil.assertS(source_stat.stat != null, "Source file should exist", .{});
+    // we assume that CopyTargetInfo has resolved paths for us so we don't have to deal with directory
+    cutil.assertS(info.source_stat.stat != null, "Source file should exist", .{});
+    cutil.assertS(info.source_stat.path_type == .file, "Source should be a file", .{});
+    cutil.assertS(info.dest_stat.path_type == .file, "Dest should be file", .{});
 
-    if (source_path.abs_path.len == 0) return;
+    if (info.source_path.abs_path.len == 0) return;
 
     // e = existing, n = non existing, f = file, dir = directory
-    const dest_exists = dest_stat.stat != null;
+    const dest_exists = info.dest_stat.stat != null;
     // Total cases covered in this function
     // case: ef -> nf : Y
-    // case: ef -> edir : Y
     // case: ef -> ef : Y with -f
     // case: ef -> ef : N without -f
-    // case: ef -> ndir : N
-
-    // case: ef -> ndir : N
-    if (!dest_exists and dest_stat.path_type == .dir) {
-        return CopyFileError.DestinationDirInvalid;
-    }
 
     // case: ef -> ef : N without -f
-    if (dest_exists and dest_stat.path_type == .file and !force) {
+    if (dest_exists and info.dest_stat.path_type == .file and !force) {
         return CopyFileError.FileNoForce;
     }
 
     // case: ef -> nf : Y
     // case: ef -> ef : Y with -f
-    if (!dest_exists and dest_stat.path_type == .file) {
-        try copyFileToFile(io, source_path.abs_path, dest_path.abs_path, force);
-        return;
-    }
-
-    // case: ef -> edir : Y
-    // TODO: This is too big, ideally, the copyFile would resolve destination path
-    if (dest_exists and dest_stat.path_type == .dir) {
-        const filename = Dir.path.basename(source_path.abs_path);
-        const final_dest = try Dir.path.resolve(alloc, &.{ dest_path.abs_path, filename });
-
-        if (std.mem.eql(u8, source_path.abs_path, dest_path.abs_path)) {
-            return CopyFileError.DirSameLocation;
-        }
-
-        // try to see if file already exists at dest
-        // NOTE: this does mean more syscalls
-        // but I have been bitten by this a lot trying to copy and forgetting that
-        // there is a same name file there
-        const parsed_path = cfile.ParsedPath{ .abs_path = final_dest };
-        const dir_file_dest_stat = try cfile.pathStat(io, &parsed_path);
-        const dest_exists_file = dir_file_dest_stat.stat != null and dir_file_dest_stat.path_type == .file;
-
-        if (dir_file_dest_stat.stat == null or (dest_exists_file and force)) {
-            try copyFileToFile(io, source_path.abs_path, final_dest, force);
-            return;
-        }
-
-        if (dest_exists_file and !force) return CopyFileError.FileNoForce;
-        // if it was force we are not able to overwrite it
-        if (force) return CopyFileError.CannotOverwrite;
-        // silent exit for now
+    if (!dest_exists and info.dest_stat.path_type == .file) {
+        try copyFileToFile(io, info.source_path.abs_path, info.dest_path.abs_path, force);
         return;
     }
 }
@@ -114,7 +73,12 @@ pub fn copySerially(io: Io, alloc: std.mem.Allocator, options: *const ProgramOpt
     };
 
     if (source_stat.stat == null) {
-        std.log.err("Source not found : '{s}'", .{options.source});
+        std.log.err("cp: Source not found : '{s}'", .{options.source});
+        return error.SourceLocationInvalid;
+    }
+
+    if (source_stat.path_type == .link) {
+        std.log.err("cp: links are not supported yet : ( ", .{});
         return error.SourceLocationInvalid;
     }
 
@@ -129,13 +93,17 @@ pub fn copySerially(io: Io, alloc: std.mem.Allocator, options: *const ProgramOpt
         else => return err,
     };
 
-    // TODO: Ideally we should resolve the path and type of copy this will be here
-    if (std.mem.eql(u8, source_path.abs_path, dest_path.abs_path)) {
-        return CopyInternalError.SameLocation;
+    const resolved = try cfile.resolveTargetPaths(io, alloc, source_path, &source_stat, dest_path, &dest_stat);
+
+    if (std.mem.eql(u8, resolved.source_path.abs_path, resolved.dest_path.abs_path)) {
+        std.log.warn("cp: Same location skipping: {s}", .{resolved.dest_path.abs_path});
+        return;
     }
 
     // file to X
     if (source_stat.path_type == .file) {
-        try copyFile(io, alloc, &source_path, &source_stat, &dest_path, &dest_stat, options.force);
+        return try copyFile(io, resolved, options.force);
     }
+
+    return std.log.err("Directory and link hasn't been imlemented yet : )", .{});
 }

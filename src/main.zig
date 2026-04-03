@@ -18,25 +18,11 @@ pub fn main(init: std.process.Init) !void {
         return;
     };
 
-    // std.debug.print("{s}, {s}", .{ options.source, options.dest });
-
     try cp.copy.copySerially(io, arena, &options);
     // catch {
     // for now just exit
     // std.process.exit(1);
     // };
-
-    // outer: for (args) |arg| {
-    //     const arg_path = Io.Dir.path.parsePathPosix(arg);
-
-    // switch (stat.kind) {
-    //     .file => handleFile(arg_path),
-    //     .directory => handleDirectory(),
-    //     .sym_link => handleSymlink(),
-    // }
-
-    // const walker = try Io.Dir.walk(cwd_dir, arena);
-    // }
 
     // In order to do I/O operations need an `Io` instance.
 
