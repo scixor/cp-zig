@@ -63,14 +63,15 @@ pub fn pathToAbsolute(io: Io, allocator: Allocator, dir: Dir, rel: []const u8) R
     return try Dir.path.resolve(allocator, &.{ dir_path, rel });
 }
 
-pub fn parsePathAbsolute(io: Io, alloc: Allocator, cwd: Dir, path: []const u8) ParsedPathError!ParsedPath {
+pub fn parsePathAbsolute(io: Io, alloc: Allocator, dir: Dir, path: []const u8) ParsedPathError!ParsedPath {
     const is_abs = Dir.path.isAbsolute(path);
     var resolved: []u8 = if (is_abs) blk: {
         break :blk try alloc.dupe(u8, path);
     } else blk: {
-        break :blk try pathToAbsolute(io, alloc, cwd, path);
+        break :blk try pathToAbsolute(io, alloc, dir, path);
     };
     // HACK: because resolve removes the trailing/
+    // TOOD: when we have our own string interning fix this
     // Dir.path.resolve strips trailing separators; restore if the input had one
     const had_trailing_sep = path.len > 1 and path[path.len - 1] == Dir.path.sep;
     if (had_trailing_sep and !std.mem.endsWith(u8, resolved, "/")) {
@@ -117,7 +118,7 @@ pub fn pathStat(io: Io, path: *const ParsedPath) PathStatError!PathStat {
     return PathStat{ .stat = stat, .path_type = path_type };
 }
 
-// Resolves the paths for file and dir copy paths so it can be a simply copy
+/// Resolves the paths for file and dir copy paths so it can be a simply copy between file to file or dir to dir
 pub fn resolveTargetPaths(
     io: Io,
     alloc: Allocator,
@@ -142,9 +143,12 @@ pub fn resolveTargetPaths(
     // case: eSf -> eDd = eDd + filebase
     if (s_stat.path_type == .file) {
         if (dest_is_file) {
+            // HACK: I know we are making copies here in case we have resolve a lot this would be insane to deal with for
+            // perfs most likely we have to do view based paths with string interning
             const s_copy = try s_path.dupe(alloc);
             errdefer s_copy.deinit(alloc);
             const d_copy = try d_path.dupe(alloc);
+            errdefer d_copy.deinit(alloc); // may be a no-op
 
             return CopyTargetInfo{
                 .source_path = s_copy,
@@ -189,7 +193,7 @@ pub fn resolveTargetPaths(
     // this means the dest is a directory if same just return it
     if (dest_exists and std.mem.eql(u8, s_path.abs_path, d_path.abs_path)) return ResolveTargetInternalError.ResolveSameDir;
 
-    // if exists or doesn't exist we write to that directory so just return it
+    // source is a dir so dest must be a dir too (even if pathStat guessed file due to no trailing /)
     const s_copy = try s_path.dupe(alloc);
     errdefer s_copy.deinit(alloc);
     const d_copy = try d_path.dupe(alloc);
@@ -197,6 +201,6 @@ pub fn resolveTargetPaths(
         .source_path = s_copy,
         .source_stat = s_stat.*,
         .dest_path = d_copy,
-        .dest_stat = d_stat.*,
+        .dest_stat = .{ .stat = d_stat.stat, .path_type = .dir },
     };
 }
