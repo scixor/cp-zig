@@ -11,6 +11,10 @@ const BUFFER_SIZE = 1024;
 pub const ParsedPath = struct {
     abs_path: []const u8,
 
+    pub fn dupe(self: ParsedPath, alloc: Allocator) Allocator.Error!ParsedPath {
+        return .{ .abs_path = try alloc.dupe(u8, self.abs_path) };
+    }
+
     pub fn deinit(self: ParsedPath, alloc: Allocator) void {
         alloc.free(self.abs_path);
     }
@@ -61,13 +65,23 @@ pub fn pathToAbsolute(io: Io, allocator: Allocator, dir: Dir, rel: []const u8) R
 
 pub fn parsePathAbsolute(io: Io, alloc: Allocator, cwd: Dir, path: []const u8) ParsedPathError!ParsedPath {
     const is_abs = Dir.path.isAbsolute(path);
-    const final_path: []const u8 = if (is_abs) blk: {
-        break :blk path;
+    var resolved: []u8 = if (is_abs) blk: {
+        break :blk try alloc.dupe(u8, path);
     } else blk: {
         break :blk try pathToAbsolute(io, alloc, cwd, path);
     };
+    // HACK: because resolve removes the trailing/
+    // Dir.path.resolve strips trailing separators; restore if the input had one
+    const had_trailing_sep = path.len > 1 and path[path.len - 1] == Dir.path.sep;
+    if (had_trailing_sep and !std.mem.endsWith(u8, resolved, "/")) {
+        const with_sep = try alloc.alloc(u8, resolved.len + 1);
+        @memcpy(with_sep[0..resolved.len], resolved);
+        with_sep[resolved.len] = '/';
+        alloc.free(resolved);
+        resolved = with_sep;
+    }
 
-    return ParsedPath{ .abs_path = final_path };
+    return ParsedPath{ .abs_path = resolved };
 }
 
 pub fn pathStat(io: Io, path: *const ParsedPath) PathStatError!PathStat {
@@ -107,15 +121,15 @@ pub fn pathStat(io: Io, path: *const ParsedPath) PathStatError!PathStat {
 pub fn resolveTargetPaths(
     io: Io,
     alloc: Allocator,
-    s_path: ParsedPath,
+    s_path: *const ParsedPath,
     s_stat: *const PathStat,
-    d_path: ParsedPath,
+    d_path: *const ParsedPath,
     d_stat: *const PathStat,
 ) ResolveTargetErrorType!CopyTargetInfo {
     cutil.assertS(s_path.abs_path.len > 0, "Source path must be non empty", .{});
     cutil.assertS(s_stat.stat != null, "source must exist", .{});
     cutil.assertS(s_stat.path_type != .link, "Links are not supported yet why tf this reached here? {s}", .{s_path.abs_path});
-    cutil.assertS(.path_type != .dir, "Links are not supported yet why tf this reached here? {s}", .{s_path.abs_path});
+    cutil.assertS(d_stat.path_type != .link, "Links are not supported yet why tf this reached here? {s}", .{d_path.abs_path});
 
     const dest_exists = d_stat.stat != null;
     const dest_is_file = d_stat.path_type == .file;
@@ -127,12 +141,18 @@ pub fn resolveTargetPaths(
     // case: eSf -> nDd = error (file cannot be to non existing dir we don't make it)
     // case: eSf -> eDd = eDd + filebase
     if (s_stat.path_type == .file) {
-        if (dest_is_file) return CopyTargetInfo{
-            .source_path = s_path,
-            .source_stat = s_stat.*,
-            .dest_path = d_path,
-            .dest_stat = d_stat.*,
-        };
+        if (dest_is_file) {
+            const s_copy = try s_path.dupe(alloc);
+            errdefer s_copy.deinit(alloc);
+            const d_copy = try d_path.dupe(alloc);
+
+            return CopyTargetInfo{
+                .source_path = s_copy,
+                .source_stat = s_stat.*,
+                .dest_path = d_copy,
+                .dest_stat = d_stat.*,
+            };
+        }
 
         if (!dest_exists and d_stat.path_type == .dir) {
             return error.ResolveInvalidFileToDir;
@@ -147,11 +167,14 @@ pub fn resolveTargetPaths(
         // that means the path is existing directory
         const filename = Dir.path.basename(s_path.abs_path);
         const final_dest = try Dir.path.resolve(alloc, &.{ d_path.abs_path, filename });
+        errdefer alloc.free(final_dest);
+        const s_copy = try s_path.dupe(alloc);
         const parsed_path = ParsedPath{ .abs_path = final_dest };
+        errdefer parsed_path.deinit(alloc);
         const resolved_stat = try pathStat(io, &parsed_path);
 
         return CopyTargetInfo{
-            .source_path = s_path,
+            .source_path = s_copy,
             .source_stat = s_stat.*,
             .dest_path = parsed_path,
             .dest_stat = resolved_stat,
@@ -167,10 +190,13 @@ pub fn resolveTargetPaths(
     if (dest_exists and std.mem.eql(u8, s_path.abs_path, d_path.abs_path)) return ResolveTargetInternalError.ResolveSameDir;
 
     // if exists or doesn't exist we write to that directory so just return it
+    const s_copy = try s_path.dupe(alloc);
+    errdefer s_copy.deinit(alloc);
+    const d_copy = try d_path.dupe(alloc);
     return CopyTargetInfo{
-        .source_path = s_path,
+        .source_path = s_copy,
         .source_stat = s_stat.*,
-        .dest_path = d_path,
+        .dest_path = d_copy,
         .dest_stat = d_stat.*,
     };
 }

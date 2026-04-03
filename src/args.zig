@@ -7,6 +7,20 @@ pub const ProgramOptions = struct {
     verbose: bool,
     source: [:0]const u8,
     dest: [:0]const u8,
+
+    pub fn init(
+        source: [:0]const u8,
+        dest: [:0]const u8,
+        opts: struct { recurse: bool = false, force: bool = false, verbose: bool = false },
+    ) ProgramOptions {
+        return .{
+            .recurse = opts.recurse,
+            .force = opts.force,
+            .verbose = opts.verbose,
+            .source = source,
+            .dest = dest,
+        };
+    }
 };
 
 comptime {
@@ -61,11 +75,9 @@ pub fn parseProgramOptions(args: *const []const [:0]const u8) ProgramParseError!
         std.log.info("Dest: {s}", .{dest});
     }
 
-    return .{
+    return ProgramOptions.init(source, dest, .{
         .recurse = recurse,
         .force = force,
         .verbose = verbose,
-        .source = source,
-        .dest = dest,
-    };
+    });
 }

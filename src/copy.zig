@@ -52,13 +52,17 @@ fn copyFile(
 
     // case: ef -> nf : Y
     // case: ef -> ef : Y with -f
-    if (!dest_exists and info.dest_stat.path_type == .file) {
+    if (info.dest_stat.path_type == .file) {
         try copyFileToFile(io, info.source_path.abs_path, info.dest_path.abs_path, force);
         return;
     }
 }
 
-pub fn copySerially(io: Io, alloc: std.mem.Allocator, options: *const ProgramOptions) CopyError!void {
+fn resolveCopyTarget(
+    io: Io,
+    alloc: std.mem.Allocator,
+    options: *const ProgramOptions,
+) CopyError!cfile.CopyTargetInfo {
     const cwd = Dir.cwd();
 
     const source_path = try cfile.parsePathAbsolute(io, alloc, cwd, options.source);
@@ -73,7 +77,6 @@ pub fn copySerially(io: Io, alloc: std.mem.Allocator, options: *const ProgramOpt
     };
 
     if (source_stat.stat == null) {
-        std.log.err("cp: Source not found : '{s}'", .{options.source});
         return error.SourceLocationInvalid;
     }
 
@@ -93,15 +96,20 @@ pub fn copySerially(io: Io, alloc: std.mem.Allocator, options: *const ProgramOpt
         else => return err,
     };
 
-    const resolved = try cfile.resolveTargetPaths(io, alloc, source_path, &source_stat, dest_path, &dest_stat);
+    return try cfile.resolveTargetPaths(io, alloc, &source_path, &source_stat, &dest_path, &dest_stat);
+}
+
+pub fn copySerially(io: Io, alloc: std.mem.Allocator, options: *const ProgramOptions) CopyError!void {
+    const resolved = try resolveCopyTarget(io, alloc, options);
+    defer resolved.deinit(alloc);
 
     if (std.mem.eql(u8, resolved.source_path.abs_path, resolved.dest_path.abs_path)) {
-        std.log.warn("cp: Same location skipping: {s}", .{resolved.dest_path.abs_path});
+        std.log.info("cp: Same location skipping: {s}", .{resolved.dest_path.abs_path});
         return;
     }
 
     // file to X
-    if (source_stat.path_type == .file) {
+    if (resolved.source_stat.path_type == .file) {
         return try copyFile(io, resolved, options.force);
     }
 
