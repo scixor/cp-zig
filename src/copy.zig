@@ -190,7 +190,7 @@ fn copyDir(
     defer ddir.close(io);
 
     const jobs = resolvedJobs(options);
-    const queue_capacity = @max(jobs * 8, 64);
+    const queue_capacity = @max(jobs * 8, 256);
     const buffer = try alloc.alloc(DirTask, queue_capacity);
     defer alloc.free(buffer);
     var queue = Io.Queue(DirTask).init(buffer);
