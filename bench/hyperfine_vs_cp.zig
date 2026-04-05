@@ -20,6 +20,7 @@ const BenchOptions = struct {
     cpz_args: []const u8,
     fcp_args: []const u8,
     backend: []const u8,
+    jobs: usize,
     runs: usize,
     warmup: usize,
     size_gib: usize,
@@ -178,6 +179,16 @@ fn runBenchmark(init: std.process.Init, alloc: Allocator, options: BenchOptions)
         paths.src_dir,
         paths.dst_cpzig,
     });
+    const cpzig_cmd_with_jobs = if (options.jobs > 0)
+        try std.fmt.allocPrint(alloc, "{s} -r {s} --jobs={d} {s} {s}", .{
+            options.cpzig_bin,
+            backend_flag,
+            options.jobs,
+            paths.src_dir,
+            paths.dst_cpzig,
+        })
+    else
+        cpzig_cmd;
     const cpzig_single_cmd = try std.fmt.allocPrint(alloc, "{s} -r --single {s} {s}", .{
         options.cpzig_bin,
         paths.src_dir,
@@ -208,7 +219,7 @@ fn runBenchmark(init: std.process.Init, alloc: Allocator, options: BenchOptions)
         "--command-name",
     });
     try hyperfine_args.append(alloc, try std.fmt.allocPrint(alloc, "cp-zig-{s}", .{options.backend}));
-    try hyperfine_args.append(alloc, cpzig_cmd);
+    try hyperfine_args.append(alloc, cpzig_cmd_with_jobs);
 
     if (!std.mem.eql(u8, options.backend, "single")) {
         try hyperfine_args.appendSlice(alloc, &.{ "--command-name", "cp-zig-single", cpzig_single_cmd });
@@ -250,6 +261,7 @@ fn parseBenchOptions(io: Io, alloc: Allocator, args: []const [:0]const u8) !Benc
         .cpz_args = "",
         .fcp_args = "",
         .backend = "threaded",
+        .jobs = 0,
         .runs = 5,
         .warmup = 1,
         .size_gib = 5,
@@ -286,6 +298,8 @@ fn parseBenchOptions(io: Io, alloc: Allocator, args: []const [:0]const u8) !Benc
             options.fcp_args = value;
         } else if (std.mem.eql(u8, arg, "--backend")) {
             options.backend = value;
+        } else if (std.mem.eql(u8, arg, "--jobs")) {
+            options.jobs = std.fmt.parseUnsigned(usize, value, 10) catch return error.InvalidNumber;
         } else if (std.mem.eql(u8, arg, "--runs")) {
             options.runs = std.fmt.parseUnsigned(usize, value, 10) catch return error.InvalidNumber;
         } else if (std.mem.eql(u8, arg, "--warmup")) {
@@ -321,6 +335,7 @@ fn printUsage() void {
     std.log.info("  --cpz-args STR         Extra cpz args before SRC DST", .{});
     std.log.info("  --fcp-args STR         Extra fcp args before SRC DST", .{});
     std.log.info("  --backend NAME         Backend for cp-zig: threaded|single|evented", .{});
+    std.log.info("  --jobs N               Set --jobs value for cp-zig (default: auto)", .{});
     std.log.info("  --runs N               Hyperfine runs per command", .{});
     std.log.info("  --warmup N             Hyperfine warmup runs", .{});
     std.log.info("  --size-gib N           Dataset size in GiB", .{});

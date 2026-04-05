@@ -16,6 +16,8 @@ and default threaded io implementation.
 **NOTE**: I haven't tested it as throughly I just wrote a simple benchmark script just to test out as it was never the
 intention to make it the fastest and lacks many feature of cp.
 
+### Laptop
+Core Ultra 185H (22C)
 ```sh
 ./zig-out/bin/bench-hyperfine \
     --tmp-root /home/sid/bench-disk \
@@ -51,6 +53,53 @@ Summary
     6.03 ± 0.60 times faster than cp-zig-single
     6.17 ± 1.01 times faster than cp
 ```
+
+
+### Server
+
+AMD Epyc Zen5c (cgroups to 16 cores)
+
+```sh
+./bench-hyperfine --cpzig ./cp-zig --cpz ./cpz --fcp ./fcp --backend threaded --tmp-root ./test-temp
+```
+
+```sh
+info: workdir: ./test-temp/cpzig-bench-00
+info: dataset target: 5120 MiB (5120 files x 1 MiB)
+info: depth=6 fanout=8 backend=threaded runs=5 warmup=1
+...
+info: source stats: bytes=5368709120 files=5120 dirs=14921
+info: running hyperfine...
+Benchmark 1: cp-zig-threaded
+  Time (mean ± σ):     316.7 ms ±   6.6 ms    [User: 27.7 ms, System: 2985.8 ms]
+  Range (min … max):   309.7 ms … 325.4 ms    5 runs
+ 
+Benchmark 2: cp-zig-single
+  Time (mean ± σ):      1.882 s ±  0.031 s    [User: 0.015 s, System: 1.776 s]
+  Range (min … max):    1.852 s …  1.933 s    5 runs
+ 
+Benchmark 3: cp
+  Time (mean ± σ):      1.889 s ±  0.024 s    [User: 0.024 s, System: 1.776 s]
+  Range (min … max):    1.854 s …  1.912 s    5 runs
+ 
+Benchmark 4: cpz
+  Time (mean ± σ):     339.4 ms ±   4.8 ms    [User: 24.8 ms, System: 3566.8 ms]
+  Range (min … max):   333.0 ms … 344.1 ms    5 runs
+ 
+Benchmark 5: fcp
+  Time (mean ± σ):      1.000 s ±  0.081 s    [User: 0.288 s, System: 16.292 s]
+  Range (min … max):    0.864 s …  1.073 s    5 runs
+ 
+Summary
+  cp-zig-threaded ran
+    1.07 ± 0.03 times faster than cpz
+    3.16 ± 0.26 times faster than fcp
+    5.94 ± 0.16 times faster than cp-zig-single
+    5.96 ± 0.15 times faster than cp
+```
+
+> [!NOTE]
+> fcp probably doesn't detect cgroups correctly hence the slowdown caused by making too many threads
 
 ## Build
 

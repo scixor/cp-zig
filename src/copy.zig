@@ -28,17 +28,6 @@ const CopyDirContext = struct {
     failed: std.atomic.Value(bool),
 };
 
-fn resolvedJobs(options: *const ProgramOptions) usize {
-    if (options.backend == .single) return 1;
-    if (options.jobs > 0) return options.jobs;
-    const cpu_count = std.Thread.getCpuCount() catch {
-        std.log.info("cp: Could not get cpu count falling back to 1", .{});
-        return 1;
-    };
-    if (cpu_count == 0) return 1;
-    return cpu_count;
-}
-
 const joinChildPathZ = cfile.joinChildPathZ;
 
 fn enqueueDir(ctx: *CopyDirContext, path: [:0]u8) CopyDirError!void {
@@ -189,7 +178,7 @@ fn copyDir(
     const ddir = try cwd.openDir(io, info.dest, .{});
     defer ddir.close(io);
 
-    const jobs = resolvedJobs(options);
+    const jobs = @max(options.jobs, 1);
     const queue_capacity = @max(jobs * 8, 256);
     const buffer = try alloc.alloc(DirTask, queue_capacity);
     defer alloc.free(buffer);

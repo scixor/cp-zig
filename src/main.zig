@@ -2,6 +2,7 @@ const std = @import("std");
 const Io = std.Io;
 
 const cp = @import("root.zig");
+const cutil = @import("util.zig");
 const Backend = cp.args.Backend;
 
 fn runCopy(io: Io, arena: std.mem.Allocator, options: *const cp.args.ProgramOptions) void {
@@ -32,7 +33,7 @@ pub fn main(init: std.process.Init) !void {
     const args = try init.minimal.args.toSlice(arena);
     var parse_ctx: cp.args.ParseContext = .{};
 
-    const options = cp.args.parseProgramOptions(&args, &parse_ctx) catch |err| {
+    var options = cp.args.parseProgramOptions(&args, &parse_ctx) catch |err| {
         switch (err) {
             error.HelpRequested => {
                 cp.args.printUsage();
@@ -49,6 +50,10 @@ pub fn main(init: std.process.Init) !void {
         cp.args.printUsage();
         return;
     };
+
+    const jobs_info = cutil.resolveJobsInfo(options.backend, options.jobs);
+    options.jobs = jobs_info.resolved_jobs;
+    if (options.verbose) jobs_info.log("jobs");
 
     if (options.backend == .evented) {
         // FIXME: (¬`‸´¬) Uring.zig error set bug in zig 0.16.0-dev.3091
@@ -72,7 +77,7 @@ pub fn main(init: std.process.Init) !void {
 
     if (options.backend == .threaded) {
         var threaded: Io.Threaded = Io.Threaded.init(init.gpa, .{
-            .async_limit = if (options.jobs > 0) .limited(options.jobs) else null,
+            .async_limit = .limited(options.jobs),
         });
         defer threaded.deinit();
         return runCopy(threaded.io(), arena, &options);
