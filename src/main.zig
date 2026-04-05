@@ -30,13 +30,23 @@ pub fn main(init: std.process.Init) !void {
     const arena: std.mem.Allocator = init.arena.allocator();
 
     const args = try init.minimal.args.toSlice(arena);
+    var parse_ctx: cp.args.ParseContext = .{};
 
-    const options = cp.args.parseProgramOptions(&args) catch |err| {
+    const options = cp.args.parseProgramOptions(&args, &parse_ctx) catch |err| {
         switch (err) {
-            error.SourceNotFound => std.log.err("No source was given", .{}),
-            error.DestNotFound => std.log.err("No destination was given", .{}),
+            error.HelpRequested => {
+                cp.args.printUsage();
+                return;
+            },
+            error.SourceNotFound => std.log.err("cp: missing source path", .{}),
+            error.DestNotFound => std.log.err("cp: missing destination path", .{}),
+            error.MissingJobsValue => std.log.err("cp: option '{s}' requires a value", .{parse_ctx.bad_arg orelse "--jobs"}),
             error.InvalidJobs => std.log.err("cp: invalid --jobs value", .{}),
+            error.UnknownArgument => std.log.err("cp: unknown argument '{s}'", .{parse_ctx.bad_arg orelse "<unknown>"}),
+            error.TooManyPositionals => std.log.err("cp: unexpected extra positional argument '{s}'", .{parse_ctx.bad_arg orelse "<unknown>"}),
         }
+
+        cp.args.printUsage();
         return;
     };
 
