@@ -23,6 +23,17 @@ pub fn build(b: *std.Build) void {
 
     b.installArtifact(exe);
 
+    const bench_exe = b.addExecutable(.{
+        .name = "bench-hyperfine",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("bench/hyperfine_vs_cp.zig"),
+            .target = target,
+            .optimize = optimize,
+        }),
+    });
+
+    b.installArtifact(bench_exe);
+
     const check_step = b.step("check", "Check the build");
     check_step.dependOn(&exe.step);
 
@@ -35,6 +46,15 @@ pub fn build(b: *std.Build) void {
 
     if (b.args) |args| {
         run_cmd.addArgs(args);
+    }
+
+    const bench_step = b.step("bench", "Run hyperfine benchmark");
+    const bench_cmd = b.addRunArtifact(bench_exe);
+    bench_cmd.step.dependOn(b.getInstallStep());
+    bench_step.dependOn(&bench_cmd.step);
+
+    if (b.args) |args| {
+        bench_cmd.addArgs(args);
     }
 
     const mod_tests = b.addTest(.{
