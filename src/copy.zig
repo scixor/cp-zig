@@ -91,6 +91,8 @@ fn processEntries(ctx: *CopyDirContext, parent: []const u8, it: *Dir.Iterator) C
             .file => {
                 const file_path = try joinChildPathZ(ctx.alloc, parent, entry.name);
                 defer ctx.alloc.free(file_path[0 .. file_path.len + 1]);
+                // FIXME: (⁠╥⁠﹏⁠╥⁠) all .replace = false will error out for Io.Uring implementation with "EINVAL"
+                // made a fix hope it goes through https://codeberg.org/ziglang/zig/pulls/31754
                 Dir.copyFile(ctx.source_dir, file_path, ctx.dest_dir, file_path, ctx.io, .{
                     .replace = ctx.force,
                     .permissions = if (ctx.preserve_mode) null else File.Permissions.default_file,
