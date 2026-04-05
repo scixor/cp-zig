@@ -4,44 +4,67 @@ const Io = std.Io;
 const cp = @import("root.zig");
 const Backend = cp.args.Backend;
 
+fn runCopy(io: Io, arena: std.mem.Allocator, options: *const cp.args.ProgramOptions) void {
+    if (options.verbose) {
+        std.log.info("cp: using {s} backend", .{options.backend.str()});
+    }
+
+    cp.copy.copy(io, arena, options) catch |err| {
+        switch (err) {
+            error.ResolveSameDir => {},
+            error.SourceLocationInvalid => std.log.err("cp: cannot stat '{s}': No such file or directory", .{options.source}),
+            error.ResolveInvalidFileToDir => std.log.err("cp: cannot copy '{s}' to non-existing directory '{s}'", .{ options.source, options.dest }),
+            error.ResolveInvalidDirToFile => std.log.err("cp: cannot overwrite non-directory '{s}' with directory '{s}'", .{ options.dest, options.source }),
+            error.FileNoForce => std.log.err("cp: '{s}' already exists, use -f to overwrite", .{options.dest}),
+            error.FileNotFound => std.log.err("cp: '{s}': No such file or directory", .{options.source}),
+            error.AccessDenied, error.PermissionDenied => std.log.err("cp: permission denied", .{}),
+            error.NoSpaceLeft => std.log.err("cp: no space left on device", .{}),
+            error.OutOfMemory => std.log.err("cp: out of memory", .{}),
+            error.Canceled => {},
+            else => std.log.err("cp: {s}", .{@errorName(err)}),
+        }
+    };
+}
+
 pub fn main(init: std.process.Init) !void {
     const arena: std.mem.Allocator = init.arena.allocator();
 
-    // Accessing command line arguments:
     const args = try init.minimal.args.toSlice(arena);
 
     const options = cp.args.parseProgramOptions(&args) catch |err| {
         switch (err) {
             error.SourceNotFound => std.log.err("No source was given", .{}),
             error.DestNotFound => std.log.err("No destination was given", .{}),
+            error.InvalidJobs => std.log.err("cp: invalid --jobs value", .{}),
         }
         return;
     };
 
     if (options.backend == .evented) {
-        var evented: Io.Evented = undefined;
-        evented.init(init.gpa, .{}) catch |err| {
-            std.log.err("cp: failed to init evented backend: {s}", .{@errorName(err)});
-            return err;
-        };
-        defer evented.deinit();
-
-        if (options.verbose) {
-            std.log.info("cp: using {s} backend", .{options.backend.str()});
-        }
-        return cp.copy.copy(evented.io(), arena, &options);
+        // disabled: Uring.zig error set bug in zig 0.16.0-dev.3091
+        // var evented: Io.Evented = undefined;
+        // evented.init(init.gpa, .{}) catch |err| {
+        //     std.log.err("cp: failed to init evented backend: {s}", .{@errorName(err)});
+        //     return err;
+        // };
+        // defer evented.deinit();
+        // return runCopy(evented.io(), arena, &options);
+        std.log.err("cp: evented backend is disabled (Uring.zig error set bug in this zig version)", .{});
+        return;
     }
 
-    var single: Io.Threaded = .init_single_threaded;
-    const io: Io = switch (options.backend) {
-        .single => single.io(),
-        .threaded => init.io,
-        .evented => unreachable,
-    };
-
-    if (options.verbose) {
-        std.log.info("cp: using {s} backend", .{options.backend.str()});
+    if (options.backend == .single) {
+        var single: Io.Threaded = .init_single_threaded;
+        return runCopy(single.io(), arena, &options);
     }
 
-    try cp.copy.copy(io, arena, &options);
+    if (options.backend == .threaded) {
+        var threaded: Io.Threaded = Io.Threaded.init(init.gpa, .{
+            .async_limit = if (options.jobs > 0) .limited(options.jobs) else null,
+        });
+        defer threaded.deinit();
+        return runCopy(threaded.io(), arena, &options);
+    }
+
+    unreachable;
 }
