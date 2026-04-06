@@ -217,7 +217,7 @@ fn copyDir(
 
 pub fn copy(io: Io, alloc: std.mem.Allocator, options: *const ProgramOptions) CopyError!void {
     const resolved = cfile.resolveCopyTarget(io, alloc, options.source, options.dest) catch |err| switch (err) {
-        error.ResolveSameDir => return,
+        error.ResolveSamePath => return,
         else => return err,
     };
     defer resolved.deinit(alloc);

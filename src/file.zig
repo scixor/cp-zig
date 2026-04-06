@@ -32,9 +32,10 @@ pub const CopyTargetInfo = struct {
 
 const ResolveError = error{
     SourceLocationInvalid,
+    DestLocationInvalid,
     ResolveInvalidFileToDir,
     ResolveInvalidDirToFile,
-    ResolveSameDir,
+    ResolveSamePath,
 };
 
 pub const ResolveTargetError = ResolveError || PathStatError || Allocator.Error || Dir.RealPathFileAllocError;
@@ -105,7 +106,7 @@ pub fn resolveCopyTarget(
     const dest_stat = pathStat(cwd, io, dest) catch |err| switch (err) {
         error.StatKindNotSupported => {
             std.log.err("Dest file kind not supported: '{s}'", .{dest});
-            return error.SourceLocationInvalid;
+            return error.DestLocationInvalid;
         },
         else => return err,
     };
@@ -122,7 +123,7 @@ pub fn resolveCopyTarget(
                 const norm_dest = try cwd.realPathFileAlloc(io, dest, alloc);
                 defer alloc.free(norm_dest);
                 if (std.mem.eql(u8, norm_source, norm_dest)) {
-                    return error.ResolveSameDir;
+                    return error.ResolveSamePath;
                 }
             }
             return .{
@@ -161,7 +162,7 @@ pub fn resolveCopyTarget(
             defer alloc.free(norm_dest);
             if (std.mem.eql(u8, norm_source, norm_dest)) {
                 alloc.free(final_dest);
-                return error.ResolveSameDir;
+                return error.ResolveSamePath;
             }
         }
 
@@ -183,7 +184,7 @@ pub fn resolveCopyTarget(
         const norm_dest = try cwd.realPathFileAlloc(io, dest, alloc);
         defer alloc.free(norm_dest);
         if (std.mem.eql(u8, norm_source, norm_dest)) {
-            return error.ResolveSameDir;
+            return error.ResolveSamePath;
         }
     }
 
