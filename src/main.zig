@@ -58,6 +58,16 @@ pub fn main(init: std.process.Init) !void {
 
     switch (options.backend) {
         .evented => {
+            // FIXME: (¬`‸´¬) Uring.zig error set bug in zig 0.16.0-dev.3091
+            // Hope this gets through: https://codeberg.org/ziglang/zig/pulls/31764
+
+            // var evented: Io.Evented = undefined;
+            // evented.init(init.gpa, .{}) catch |err| {
+            //     std.log.err("cp: failed to init evented backend: {s}", .{@errorName(err)});
+            //     return err;
+            // };
+            // defer evented.deinit();
+            // return runCopy(evented.io(), arena, &options);
             std.log.err("cp: evented backend is disabled (Uring.zig error set bug in this zig version)", .{});
             return;
         },
