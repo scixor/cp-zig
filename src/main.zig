@@ -12,8 +12,9 @@ fn runCopy(io: Io, arena: std.mem.Allocator, options: *const cp.args.ProgramOpti
 
     cp.copy.copy(io, arena, options) catch |err| {
         switch (err) {
-            error.ResolveSameDir => {},
+            error.ResolveSamePath => {},
             error.SourceLocationInvalid => std.log.err("cp: cannot stat '{s}': No such file or directory", .{options.source}),
+            error.DestLocationInvalid => std.log.err("cp: cannot stat '{s}': unsupported file type", .{options.dest}),
             error.ResolveInvalidFileToDir => std.log.err("cp: cannot copy '{s}' to non-existing directory '{s}'", .{ options.source, options.dest }),
             error.ResolveInvalidDirToFile => std.log.err("cp: cannot overwrite non-directory '{s}' with directory '{s}'", .{ options.dest, options.source }),
             error.FileNoForce => std.log.err("cp: '{s}' already exists, use -f to overwrite", .{options.dest}),
@@ -55,33 +56,21 @@ pub fn main(init: std.process.Init) !void {
     options.jobs = jobs_info.resolved_jobs;
     if (options.verbose) jobs_info.log("jobs");
 
-    if (options.backend == .evented) {
-        // FIXME: (¬`‸´¬) Uring.zig error set bug in zig 0.16.0-dev.3091
-        // Hope this gets through: https://codeberg.org/ziglang/zig/pulls/31764
-
-        // var evented: Io.Evented = undefined;
-        // evented.init(init.gpa, .{}) catch |err| {
-        //     std.log.err("cp: failed to init evented backend: {s}", .{@errorName(err)});
-        //     return err;
-        // };
-        // defer evented.deinit();
-        // return runCopy(evented.io(), arena, &options);
-        std.log.err("cp: evented backend is disabled (Uring.zig error set bug in this zig version)", .{});
-        return;
+    switch (options.backend) {
+        .evented => {
+            std.log.err("cp: evented backend is disabled (Uring.zig error set bug in this zig version)", .{});
+            return;
+        },
+        .single => {
+            var single: Io.Threaded = .init_single_threaded;
+            return runCopy(single.io(), arena, &options);
+        },
+        .threaded => {
+            var threaded: Io.Threaded = Io.Threaded.init(init.gpa, .{
+                .async_limit = .limited(options.jobs),
+            });
+            defer threaded.deinit();
+            return runCopy(threaded.io(), arena, &options);
+        },
     }
-
-    if (options.backend == .single) {
-        var single: Io.Threaded = .init_single_threaded;
-        return runCopy(single.io(), arena, &options);
-    }
-
-    if (options.backend == .threaded) {
-        var threaded: Io.Threaded = Io.Threaded.init(init.gpa, .{
-            .async_limit = .limited(options.jobs),
-        });
-        defer threaded.deinit();
-        return runCopy(threaded.io(), arena, &options);
-    }
-
-    unreachable;
 }
