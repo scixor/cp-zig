@@ -24,7 +24,7 @@ fn pathInTmp(tmp_dir: Io.Dir, io: Io, alloc: std.mem.Allocator, rel: []const u8)
     defer alloc.free(tmp_abs);
     const joined = try Io.Dir.path.resolve(alloc, &.{ tmp_abs, rel });
     defer alloc.free(joined);
-    return try alloc.dupeZ(u8, joined);
+    return try alloc.dupeSentinel(u8, joined, 0);
 }
 
 test "copy file to new file" {

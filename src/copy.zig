@@ -197,7 +197,7 @@ fn copyDir(
         .failed = .init(false),
     };
 
-    const root = try alloc.dupeZ(u8, "");
+    const root = try alloc.dupeSentinel(u8, "", 0);
     errdefer alloc.free(root);
     try queue.putOne(io, .{ .path_ptr = root.ptr });
 

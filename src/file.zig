@@ -46,7 +46,7 @@ pub fn joinChildPathZ(
     child: []const u8,
 ) Allocator.Error![:0]u8 {
     if (parent.len == 0) {
-        return try alloc.dupeZ(u8, child);
+        return try alloc.dupeSentinel(u8, child, 0);
     }
     const size = parent.len + 1 + child.len;
     const out = try alloc.alloc(u8, size + 1);

@@ -44,18 +44,14 @@ pub fn build(b: *std.Build) void {
 
     run_cmd.step.dependOn(b.getInstallStep());
 
-    if (b.args) |args| {
-        run_cmd.addArgs(args);
-    }
+    run_cmd.addPassthruArgs();
 
     const bench_step = b.step("bench", "Run hyperfine benchmark");
     const bench_cmd = b.addRunArtifact(bench_exe);
     bench_cmd.step.dependOn(b.getInstallStep());
     bench_step.dependOn(&bench_cmd.step);
 
-    if (b.args) |args| {
-        bench_cmd.addArgs(args);
-    }
+    bench_cmd.addPassthruArgs();
 
     const mod_tests = b.addTest(.{
         .root_module = mod,
